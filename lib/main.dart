@@ -197,7 +197,7 @@ class _RequestFormState extends State<RequestForm> {
           _value.put(f.name, val);
         });
       };
-      fieldWidgets.add(FieldWidget(i, 1, f, getter, setter));
+      fieldWidgets.add(FieldWidget.create(i, 1, f, getter, setter));
     }
     return Form(
       key: _formKey,
@@ -262,34 +262,45 @@ Widget _withCommentPopup(BuildContext context, Widget child, String comment) {
   ]);
 }
 
-class FieldWidget extends StatelessWidget {
-  final int _idx;
-  final int _level;
+abstract class FieldWidget extends StatelessWidget {
+  final int idx;
+  final int level;
   final Function(Value) _setter;
   final ResolvedField _field;
   final Value Function() _getter;
-  late final String _name;
+  late final String name;
 
-  FieldWidget(this._idx, this._level, this._field, this._getter, this._setter) {
-    _name = _field.name;
+  FieldWidget(this.idx, this.level, this._field, this._getter, this._setter) {
+    name = _field.name;
+  }
+
+  factory FieldWidget.create(int idx, int level, ResolvedField f,
+      Value Function() getter, Function(Value) setter) {
+    switch (f.type) {
+      case prototypeInt32:
+      case prototypeInt64:
+        return IntFieldWidget(idx, level + 1, f, getter, setter);
+      case prototypeString:
+        return StringFieldWidget(idx, level + 1, f, getter, setter);
+      case prototypeMessage:
+        return MessageFieldWidget(idx, level + 1, f, getter, setter);
+      default:
+        return TodoFieldWidget(idx, level + 1, f, getter, setter);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          padding: EdgeInsets.fromLTRB(0, indent, 0, 0),
-          alignment: Alignment.centerLeft,
-          child: _withCommentPopup(context, Text(_name), _field.comment),
-        ),
-        _buildInput(),
-      ],
-    );
-  }
+    var ws = <Widget>[];
 
-  Widget _buildInput() {
-    var value = _getter();
+    // Add display name
+    ws.add(Container(
+      padding: EdgeInsets.fromLTRB(0, indent, 0, 0),
+      alignment: Alignment.centerLeft,
+      child: _withCommentPopup(context, Text(name), _field.comment),
+    ));
+
+    // Add value(s)
     if (!_field.repeated) {
       var getter = () => _getter();
       var setter = (val) {
@@ -297,9 +308,9 @@ class FieldWidget extends StatelessWidget {
         v.set(val);
         _setter(v);
       };
-      return _buildSimple(_field.type, _field.repeated, getter, setter);
+      ws.add(_buildSimple(getter, setter));
     } else {
-      var ws = <Widget>[];
+      var value = _getter();
       for (var i = 0; i < value.length(); i += 1) {
         var getter = () => _getter().at(i);
         var setter = (val) {
@@ -307,13 +318,12 @@ class FieldWidget extends StatelessWidget {
           v.setAt(i, val);
           _setter(v);
         };
+        // Pair value and delete-item button
         ws.add(Container(
-          color: _idx + i % 2 == 0 ? colourEven : colourOdd,
+          color: idx + i % 2 == 0 ? colourEven : colourOdd,
           child: Row(
             children: [
-              Expanded(
-                  child: _buildSimple(
-                      _field.type, _field.repeated, getter, setter)),
+              Expanded(child: _buildSimple(getter, setter)),
               TextButton(
                 onPressed: () {
                   var value = _getter();
@@ -326,85 +336,26 @@ class FieldWidget extends StatelessWidget {
           ),
         ));
       }
-      return Column(
-        children: [
-          ...ws,
-          TextButton(
-            onPressed: () {
-              var value = _getter();
-              value.add(Value.empty(_field.type, false));
-              _setter(value);
-            },
-            child: Row(children: [Icon(Icons.add), Text(_name)]),
-          ),
-        ],
-      );
-    }
-  }
 
-  Widget _buildSimple(String fieldType, bool repeated, Value Function() getter,
-      Function(Value) setter) {
-    switch (fieldType) {
-      case prototypeInt32:
-      case prototypeInt64:
-        var text = getter().isEmpty() ? "" : getter().intValue().toString();
-        return _textInput(_level, text, fieldType, repeated, setter);
-      case prototypeString:
-        var text = getter().isEmpty() ? "" : getter().stringValue()!;
-        return _textInput(_level, text, fieldType, repeated, setter);
-      case prototypeMessage:
-        return _mapInput(_level, _idx, _field.nested!.fields, getter, setter);
-      default:
-        return Text("$_name: ${_field.type}");
-    }
-  }
-
-  static Widget _textInput(int level, String text, String fieldType,
-      bool repeated, Function(Value) setter) {
-    var isString = fieldType == prototypeString;
-    return _withPadding(
-      level,
-      TextFormField(
-        controller: inputSetter(text),
-        keyboardType: isString
-            ? TextInputType.text
-            : TextInputType.numberWithOptions(decimal: false),
-        inputFormatters:
-            isString ? [] : [FilteringTextInputFormatter.digitsOnly],
-        onChanged: (val) {
-          var v = val.isEmpty
-              ? Value.empty(fieldType, false)
-              : isString
-                  ? Value.string(val)
-                  : Value.int(int.parse(val));
-          setter(v);
+      // Add add-item button
+      ws.add(TextButton(
+        onPressed: () {
+          var value = _getter();
+          value.add(Value.empty(_field.type, false));
+          _setter(value);
         },
-      ),
-    );
-  }
-
-  static Widget _mapInput(int level, int idx, List<ResolvedField> fields,
-      Value Function() getter, Function(Value) setter) {
-    var nested = <Widget>[];
-    for (ResolvedField f in fields) {
-      var getFn = () => getter().getOrEmpty(f.name, f.type, f.repeated);
-      var setFn = (val) {
-        var value = getter();
-        value.put(f.name, val);
-        setter(value);
-      };
-      nested.add(
-        _withPadding(level, FieldWidget(idx, level + 1, f, getFn, setFn)),
-      );
+        child: Row(children: [Icon(Icons.add), Text(name)]),
+      ));
     }
+
     return Column(
-      children: [
-        ...nested,
-      ],
+      children: ws,
     );
   }
 
-  static Widget _withPadding(int level, Widget w) {
+  Widget _buildSimple(Value Function() getter, Function(Value) setter);
+
+  Widget _withPadding(Widget w) {
     return Padding(
       padding: EdgeInsets.fromLTRB(level * indent, 0, 0, 0),
       child: w,
@@ -412,11 +363,106 @@ class FieldWidget extends StatelessWidget {
   }
 }
 
-TextEditingController inputSetter(String s) {
-  var c = TextEditingController();
-  c.value = TextEditingValue(
+TextEditingValue inputSetter(String s) {
+  return TextEditingValue(
     text: s,
     selection: TextSelection.collapsed(offset: s.length),
   );
-  return c;
+}
+
+class IntFieldWidget extends FieldWidget {
+  final TextEditingController _controller = TextEditingController();
+
+  IntFieldWidget(int idx, int level, ResolvedField field,
+      Value Function() getter, Function(Value) setter)
+      : super(idx, level, field, getter, setter) {
+    switch (_field.type) {
+      case prototypeInt32:
+      case prototypeInt64:
+        break;
+      default:
+        throw "$name is not a int32 or int64 field";
+    }
+  }
+
+  Widget _buildSimple(Value Function() getter, Function(Value) setter) {
+    var text = getter().isEmpty() ? "" : getter().intValue().toString();
+    _controller.value = inputSetter(text);
+    return _withPadding(TextFormField(
+      controller: _controller,
+      keyboardType: TextInputType.numberWithOptions(decimal: false),
+      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+      onChanged: (val) {
+        var v = val.isEmpty
+            ? Value.empty(_field.type, false)
+            : Value.int(int.parse(val));
+        setter(v);
+      },
+    ));
+  }
+}
+
+class StringFieldWidget extends FieldWidget {
+  final TextEditingController _controller = TextEditingController();
+
+  StringFieldWidget(int idx, int level, ResolvedField field,
+      Value Function() getter, Function(Value) setter)
+      : super(idx, level, field, getter, setter) {
+    if (_field.type != prototypeString) {
+      throw "$name is not a string field";
+    }
+  }
+
+  Widget _buildSimple(Value Function() getter, Function(Value) setter) {
+    var text = getter().isEmpty() ? "" : getter().stringValue()!;
+    _controller.value = inputSetter(text);
+    return _withPadding(TextFormField(
+      controller: _controller,
+      onChanged: (val) {
+        var v = val.isEmpty
+            ? Value.empty(prototypeString, false)
+            : Value.string(val);
+        setter(v);
+      },
+    ));
+  }
+}
+
+class MessageFieldWidget extends FieldWidget {
+  MessageFieldWidget(int idx, int level, ResolvedField field,
+      Value Function() getter, Function(Value) setter)
+      : super(idx, level, field, getter, setter) {
+    if (_field.type != prototypeMessage) {
+      throw "$name is not a message field";
+    }
+  }
+
+  Widget _buildSimple(Value Function() getter, Function(Value) setter) {
+    var nested = <Widget>[];
+    for (ResolvedField f in _field.nested!.fields) {
+      var getFn = () => getter().getOrEmpty(f.name, f.type, f.repeated);
+      var setFn = (val) {
+        var value = getter();
+        value.put(f.name, val);
+        setter(value);
+      };
+      Widget w = FieldWidget.create(idx, level + 1, f, getFn, setFn);
+      nested.add(_withPadding(w));
+    }
+    return Column(
+      children: [
+        ...nested,
+      ],
+    );
+  }
+}
+
+class TodoFieldWidget extends FieldWidget {
+  TodoFieldWidget(int idx, int level, ResolvedField field,
+      Value Function() getter, Function(Value) setter)
+      : super(idx, level, field, getter, setter);
+
+  Widget _buildSimple(Value Function() getter, Function(Value) setter) {
+    return Text("$name ${_field.type} (TODO)");
+  }
 }
