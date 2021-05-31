@@ -6,6 +6,15 @@ contained.
 Early work in progress.
 
 ```shell
+# generate fat descriptor set
+protoc \
+    --include_imports \
+    --include_source_info \
+    --descriptor_set_out=api_descriptor.pb \
+    -I${PROTO_GOOGLEAPIS} \
+    -I${PROTO_ROOT} \
+    ${TARGET_PROTO_FILES}
+		
 # build json en/decoders
 flutter pub run build_runner build
 ```
