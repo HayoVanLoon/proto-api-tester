@@ -94,7 +94,7 @@ class ServiceWidget extends StatefulWidget {
 class _ServiceWidgetState extends State<ServiceWidget> {
   bool _opened = false;
   final _name;
-  List<Widget> methods = [];
+  List<ResolvedServiceMethod> _methods = [];
   late Future<ResolvedService> Function() _getDescriptor;
 
   _ServiceWidgetState(this._name) {
@@ -109,6 +109,15 @@ class _ServiceWidgetState extends State<ServiceWidget> {
         onTap: () => _toggleOpen(),
       );
     }
+    var ws = <Widget>[];
+    var i = 0;
+    for (ResolvedServiceMethod m in _methods) {
+      if (i > 0) {
+        ws.add(Divider());
+      }
+      ws.add(MethodWidget(m));
+      i += 1;
+    }
     return Column(
       children: [
         ListTile(
@@ -116,7 +125,7 @@ class _ServiceWidgetState extends State<ServiceWidget> {
           onTap: () => _toggleOpen(),
         ),
         Column(
-          children: methods,
+          children: ws,
         )
       ],
     );
@@ -126,12 +135,10 @@ class _ServiceWidgetState extends State<ServiceWidget> {
     setState(() {
       _opened = !_opened;
     });
-    if (methods.isEmpty) {
+    if (_methods.isEmpty) {
       _getDescriptor().then((desc) {
         setState(() {
-          for (ResolvedServiceMethod m in desc.methods) {
-            methods.add(MethodWidget(m));
-          }
+          _methods.addAll(desc.methods);
         });
       });
     }
@@ -393,9 +400,13 @@ class IntFieldWidget extends FieldWidget {
       keyboardType: TextInputType.numberWithOptions(decimal: false),
       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
       onChanged: (val) {
-        var v = val.isEmpty
-            ? Value.empty(_field.type, false)
-            : Value.int(int.parse(val));
+        print(name + ": " + val);
+        if (val.isEmpty) {
+          setter(Value.empty(_field.type, false));
+          return;
+        }
+        var i = int.parse(val);
+        var v = _field.type == prototypeInt32 ? Value.int32(i) : Value.int64(i);
         setter(v);
       },
     ));

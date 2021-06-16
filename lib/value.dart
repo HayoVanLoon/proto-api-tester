@@ -15,7 +15,12 @@ class Value {
 
   Value.empty(this._type, this._repeated);
 
-  Value.int(int i)
+  Value.int32(int i)
+      : _intValue = i,
+        _type = prototypeInt32,
+        _repeated = false;
+
+  Value.int64(int i)
       : _intValue = i,
         _type = prototypeInt64,
         _repeated = false;
@@ -62,7 +67,7 @@ class Value {
   }
 
   int? intValue() {
-    if (_type != prototypeInt64 || _repeated) {
+    if ((_type != prototypeInt32 && _type != prototypeInt64) || _repeated) {
       throw "not a simple int";
     }
     return _intValue;
@@ -90,7 +95,7 @@ class Value {
   }
 
   void setInt(int? i) {
-    if (_type != prototypeInt64) {
+    if (_type != prototypeInt32 && _type != prototypeInt64) {
       throw "invalid type added for ($_type)";
     }
     if (_repeated) {
@@ -125,6 +130,9 @@ class Value {
     }
     assert(val.length() <= 1);
     switch (_type) {
+      case prototypeInt32:
+        setInt(val.intValue());
+        break;
       case prototypeInt64:
         setInt(val.intValue());
         break;
